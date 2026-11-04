@@ -379,10 +379,6 @@
     $$(".view-tab").forEach((button) => {
       button.addEventListener("click", () => switchView(button.dataset.view));
     });
-    $("#lock-site").addEventListener("click", () => {
-      try { localStorage.removeItem(AUTH_KEY); } catch (error) { /* ignore */ }
-      location.reload();
-    });
   }
 
   async function init() {
