@@ -39,11 +39,11 @@
     </header>
 
     <nav class="view-tabs" aria-label="榜单视图">
-      <button class="view-tab" type="button" data-view="rankings">
+      <button class="view-tab is-active" type="button" data-view="rankings">
         <i data-lucide="bar-chart-3"></i>
         <span>榜单数据</span>
       </button>
-      <button class="view-tab is-active" type="button" data-view="insights">
+      <button class="view-tab" type="button" data-view="insights">
         <i data-lucide="files"></i>
         <span>汇总报告</span>
       </button>
@@ -54,7 +54,7 @@
     </nav>
 
     <main>
-      <section id="rankings-view" class="view-hidden">
+      <section id="rankings-view">
         <div class="card ranking-controls">
           <div class="ranking-control-row">
             <div class="seg-tabs" id="category-tabs" aria-label="子类目"></div>
@@ -89,10 +89,10 @@
         </div>
       </section>
 
-      <section id="insights-view">
+      <section id="insights-view" class="view-hidden">
         <div class="card">
           <h2><i data-lucide="history"></i>汇总报告（<span id="report-count">0</span>）</h2>
-          <p class="hint">展示 榜单Data/Output 中的全部周度汇总报告，点击查看完整内容</p>
+          <p class="hint">默认展示最新一期，可切换数据期查看历史汇总</p>
           <div class="report-filter">
             <span>数据期</span>
             <select id="report-period-filter">

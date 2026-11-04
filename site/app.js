@@ -17,7 +17,7 @@
     type: "bsr",
     mode: "grid",
     visible: 50,
-    view: "insights",
+    view: "rankings",
     query: "",
     compareStarted: false,
   };
@@ -66,6 +66,8 @@
       state.manifest = await fetchJSON("./data/index.json");
       state.periodIndex = 0;
       state.category = state.manifest.meta.categories[0];
+      state.reportPeriod = state.manifest.reports?.[0]?.date || "";
+      state.reportIndex = 0;
     } finally {
       status.hidden = true;
     }
@@ -97,8 +99,9 @@
 
   function renderHeader() {
     const meta = state.manifest.meta;
-    $("#period-pill").textContent = `${meta.periodCount} 期 · 最新 ${meta.latestLabel}`;
-    $("#generated-at").textContent = `${meta.summaryReportCount} 份汇总报告`;
+    $("#period-pill").textContent = `最新榜单 ${meta.latestLabel}`;
+    const latestReport = state.manifest.reports?.[0];
+    $("#generated-at").textContent = latestReport ? `最新汇总 ${latestReport.label}` : "暂无汇总报告";
   }
 
   function renderControls() {
@@ -256,7 +259,7 @@
     const filtered = reports
       .map((report, index) => ({ report, index }))
       .filter(({ report }) => reportMatchesPeriod(report));
-    $("#report-count").textContent = String(reports.length);
+    $("#report-count").textContent = String(filtered.length);
     const periodSelect = $("#report-period-filter");
     periodSelect.innerHTML = `
       <option value="">全部</option>
@@ -389,7 +392,7 @@
       renderHeader();
       renderControls();
       bindEvents();
-      switchView("insights");
+      switchView("rankings");
       initIcons();
     } catch (error) {
       const status = $("#load-status");
