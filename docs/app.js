@@ -259,7 +259,6 @@
     const filtered = reports
       .map((report, index) => ({ report, index }))
       .filter(({ report }) => reportMatchesPeriod(report));
-    $("#report-count").textContent = String(filtered.length);
     const periodSelect = $("#report-period-filter");
     periodSelect.innerHTML = `
       <option value="">全部</option>
