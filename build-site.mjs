@@ -503,18 +503,18 @@ function parseSummaryBrief(rows) {
 
 function addImagesToReportSheets(sheets, imageByAsin) {
   for (const sheet of sheets) {
-    const headerIndex = sheet.rows.findIndex((row) => row.some((cell) => cleanCell(cell) === "主图")
-      && row.some((cell) => /^ASIN$/i.test(cleanCell(cell))));
-    if (headerIndex < 0) continue;
-    const headers = sheet.rows[headerIndex].map(cleanCell);
-    const imageIndex = headers.indexOf("主图");
-    const asinIndex = headers.findIndex((header) => /^ASIN$/i.test(header));
-    if (imageIndex < 0 || asinIndex < 0) continue;
-    for (const row of sheet.rows.slice(headerIndex + 1)) {
-      const asin = cleanCell(row[asinIndex]).toUpperCase();
-      if (!asin) break;
-      if (!cleanCell(row[imageIndex]) && imageByAsin.has(asin)) {
-        row[imageIndex] = imageByAsin.get(asin);
+    for (let headerIndex = 0; headerIndex < sheet.rows.length; headerIndex++) {
+      const headerRow = sheet.rows[headerIndex];
+      const imageIndex = headerRow.findIndex((cell) => cleanCell(cell) === "主图");
+      const asinIndex = headerRow.findIndex((cell) => /^ASIN$/i.test(cleanCell(cell)));
+      if (imageIndex < 0 || asinIndex < 0) continue;
+      for (let rowIndex = headerIndex + 1; rowIndex < sheet.rows.length; rowIndex++) {
+        const row = sheet.rows[rowIndex];
+        const asin = cleanCell(row[asinIndex]).toUpperCase();
+        if (!asin) break;
+        if (!cleanCell(row[imageIndex]) && imageByAsin.has(asin)) {
+          row[imageIndex] = imageByAsin.get(asin);
+        }
       }
     }
   }
