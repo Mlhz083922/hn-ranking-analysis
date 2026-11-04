@@ -662,6 +662,9 @@ async function build() {
   versionHash.update(JSON.stringify(manifest));
   periods.forEach((period) => versionHash.update(JSON.stringify(period)));
   reports.forEach((report) => versionHash.update(JSON.stringify(report.sheets)));
+  for (const sourceName of ["index.html", "styles.css", "ui-common.js", "app.js", "report-viewer.js", "compare-viewer.js"]) {
+    versionHash.update(await fs.readFile(path.join(SOURCE_DIR, sourceName)));
+  }
   const version = versionHash.digest("hex").slice(0, 12);
   manifest.meta.version = version;
 

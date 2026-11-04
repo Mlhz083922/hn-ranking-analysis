@@ -139,7 +139,7 @@
       product.prevRank == null ? "-" : product.prevRank,
       product.diff != null ? (product.diff > 0 ? `+${product.diff}` : product.diff) : (product.curRank == null ? "跌出" : "新进"),
       product.brand || "",
-      (product.title || "").slice(0, 42),
+      (product.title || "").slice(0, 40),
       product.price == null ? "" : product.price,
       product.rating == null ? "" : product.rating,
       product.reviews == null ? "" : product.reviews,
@@ -219,7 +219,7 @@
       if (imageColumns.includes(columnIndex)) {
         const asin = asinColumn >= 0 ? String(row[asinColumn] || "").trim() : "";
         if (/^(https?:\/\/|data:image\/)/i.test(String(value))) {
-          return `<a href="https://www.amazon.com/dp/${encodeURIComponent(asin)}" target="_blank" rel="noopener"><img src="${esc(value)}" alt="${esc(asin || "商品")}" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:6px;display:block"></a>`;
+          return `<a href="https://www.amazon.com/dp/${encodeURIComponent(asin)}" target="_blank" rel="noopener" title="${esc(asin || "查看商品")}"><img src="${esc(value)}" alt="${esc(asin || "商品")}" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:6px;display:block"></a>`;
         }
         return asin ? `<a href="https://www.amazon.com/dp/${encodeURIComponent(asin)}" target="_blank" rel="noopener">${esc(asin)}</a>` : esc(value);
       }
