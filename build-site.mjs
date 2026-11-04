@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const WORKBENCH_DIR = process.env.RANKING_WORKBENCH_DIR
@@ -21,6 +22,10 @@ const TYPE_LABELS = { bsr: "热卖榜 BSR", new: "新品榜 NEW" };
 const { parseXlsxTable } = await import(
   pathToFileURL(path.join(WORKBENCH_DIR, "hotsearch-lib", "xlsx.mjs")).href
 );
+const requireDependency = createRequire(pathToFileURL(path.join(WORKBENCH_DIR, "server.mjs")));
+const JSZip = requireDependency("jszip");
+const sax = requireDependency("sax");
+const { xml2js } = requireDependency("xml-js");
 
 function dateFromName(name) {
   return (String(name || "").match(/(\d{8})/) || [""])[0];
@@ -69,6 +74,157 @@ function imageUrl(value) {
   if (!url) return "";
   if (url.startsWith("//")) return `https:${url}`;
   return url.replace(/^http:\/\//i, "https://");
+}
+
+function asArray(value) {
+  if (value == null) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function excelColumnIndex(ref) {
+  const match = /^([A-Z]+)/.exec(String(ref || ""));
+  if (!match) return -1;
+  let index = 0;
+  for (const char of match[1]) index = index * 26 + (char.charCodeAt(0) - 64);
+  return index - 1;
+}
+
+function parseSharedStringsXml(xml) {
+  return new Promise((resolve, reject) => {
+    const strings = [];
+    const parser = sax.parser(true);
+    let current = null;
+    let inText = false;
+    let text = "";
+    parser.onopentag = (node) => {
+      if (node.name === "si") current = "";
+      else if (node.name === "t" && current !== null) {
+        inText = true;
+        text = "";
+      }
+    };
+    parser.ontext = (value) => {
+      if (inText) text += value;
+    };
+    parser.onclosetag = (name) => {
+      if (name === "t" && current !== null) {
+        current += text;
+        inText = false;
+      } else if (name === "si") {
+        strings.push(current || "");
+        current = null;
+      }
+    };
+    parser.onerror = (error) => {
+      parser.error = null;
+      reject(error);
+    };
+    parser.onend = () => resolve(strings);
+    parser.write(xml);
+    parser.close();
+  });
+}
+
+function parseSheetXml(xml, sharedStrings) {
+  return new Promise((resolve, reject) => {
+    const rows = [];
+    const parser = sax.parser(true);
+    let rowCells = null;
+    let cellRef = null;
+    let cellType = null;
+    let cellText = "";
+    let inValue = false;
+    let inInlineText = false;
+
+    const commitCell = () => {
+      if (cellRef !== null && rowCells) {
+        const index = excelColumnIndex(cellRef);
+        if (index >= 0) {
+          rowCells[index] = cellType === "s"
+            ? sharedStrings[Number(cellText)] ?? ""
+            : cellText;
+        }
+      }
+      cellRef = null;
+      cellType = null;
+      cellText = "";
+      inValue = false;
+      inInlineText = false;
+    };
+    const commitRow = () => {
+      if (rowCells && rowCells.some((value) => cleanCell(value))) rows.push(rowCells);
+      rowCells = null;
+    };
+
+    parser.onopentag = (node) => {
+      if (node.name === "row") rowCells = [];
+      else if (node.name === "c" && rowCells) {
+        cellRef = node.attributes.r;
+        cellType = node.attributes.t || null;
+        cellText = "";
+      } else if (node.name === "v" && cellRef !== null) {
+        inValue = true;
+        cellText = "";
+      } else if (node.name === "t" && cellRef !== null && cellType === "inlineStr") {
+        inInlineText = true;
+        cellText = "";
+      }
+    };
+    parser.ontext = (value) => {
+      if (inValue || inInlineText) cellText += value;
+    };
+    parser.onclosetag = (name) => {
+      if (name === "v" && cellRef !== null) {
+        inValue = false;
+        commitCell();
+      } else if (name === "t" && inInlineText) {
+        inInlineText = false;
+        commitCell();
+      } else if (name === "c") {
+        if (cellRef !== null) commitCell();
+      } else if (name === "row" && rowCells) {
+        commitRow();
+      }
+    };
+    parser.onerror = (error) => {
+      parser.error = null;
+      reject(error);
+    };
+    parser.onend = () => resolve(rows);
+    parser.write(xml);
+    parser.close();
+  });
+}
+
+async function parseWorkbookSheets(filePath) {
+  const zip = await JSZip.loadAsync(await fs.readFile(filePath));
+  const sharedFile = zip.file("xl/sharedStrings.xml");
+  const sharedStrings = sharedFile ? await parseSharedStringsXml(await sharedFile.async("string")) : [];
+  const workbookXml = await zip.file("xl/workbook.xml").async("string");
+  const relsXml = await zip.file("xl/_rels/workbook.xml.rels").async("string");
+  const workbook = xml2js(workbookXml, { compact: true });
+  const relationships = xml2js(relsXml, { compact: true });
+  const relMap = new Map(
+    asArray(relationships.Relationships.Relationship).map((relationship) => [
+      relationship._attributes.Id,
+      relationship._attributes.Target || "",
+    ])
+  );
+  const result = [];
+  for (const sheet of asArray(workbook.workbook.sheets.sheet)) {
+    const name = sheet._attributes.name || `Sheet${result.length + 1}`;
+    const relationId = sheet._attributes["r:id"] || sheet._attributes.rId;
+    let target = relMap.get(relationId) || "";
+    if (target.startsWith("/")) target = target.replace(/^\//, "");
+    else if (target && !target.startsWith("xl/")) target = `xl/${target}`;
+    const sheetFile = zip.file(target);
+    if (!sheetFile) continue;
+    result.push({
+      name,
+      rows: await parseSheetXml(await sheetFile.async("string"), sharedStrings),
+    });
+  }
+  return result;
 }
 
 async function parseRankingFile(filePath, type) {
@@ -123,6 +279,7 @@ async function parseRankingFile(filePath, type) {
       newReviews: parseNumber(get("newReviews")),
       rating: parseNumber(get("rating")),
       sales: parseNumber(get("sales")),
+      monthSales: parseNumber(get("sales")),
       salesGrowth: parseNumber(get("salesGrowth")),
       bsrBig: parseNumber(get("bsrBig")),
       bsrSmall: parseNumber(get("bsrSmall")),
@@ -239,10 +396,7 @@ function sourceForPeriod(sources, date) {
     result.set(category, {});
     for (const type of ["bsr", "new"]) {
       const files = sources.get(category)[type];
-      const selected = files.find((file) => file.date === date)
-        || files.find((file) => file.date < date)
-        || files[0]
-        || null;
+      const selected = files.find((file) => file.date === date) || null;
       result.get(category)[type] = selected;
     }
   }
@@ -347,33 +501,40 @@ function parseSummaryBrief(rows) {
   };
 }
 
-async function loadBriefs() {
+async function loadReports() {
   const entries = await fs.readdir(OUTPUT_DIR, { withFileTypes: true }).catch(() => []);
   const candidates = entries
     .filter((entry) => entry.isFile() && /分析汇总_\d{8}\.xlsx$/i.test(entry.name))
     .map((entry) => ({ name: entry.name, date: dateFromName(entry.name) }))
     .sort((a, b) => b.date.localeCompare(a.date));
-  const briefs = [];
+  const reports = [];
   for (const source of candidates) {
     try {
-      const rows = await parseXlsxTable(await fs.readFile(path.join(OUTPUT_DIR, source.name)));
-      briefs.push({
-        ...parseSummaryBrief(rows),
+      const sheets = await parseWorkbookSheets(path.join(OUTPUT_DIR, source.name));
+      if (!sheets.length) throw new Error("工作簿没有可读取的工作表");
+      const kind = /^类目分析汇总/.test(source.name) ? "category" : "ranking";
+      reports.push({
+        key: `report_${source.date}_${kind}`,
+        date: source.date,
+        label: dateLabel(source.date),
+        kind,
+        brief: parseSummaryBrief(sheets[0].rows || []),
+        sheets,
         sourceFile: source.name,
-        sourceDate: source.date,
-        sourceLabel: dateLabel(source.date),
+        name: source.name,
       });
     } catch (error) {
       console.warn(`summary skipped: ${source.name}: ${error.message}`);
     }
   }
-  for (const brief of briefs) {
-    const sameDate = briefs.filter((item) => item.sourceDate === brief.sourceDate);
-    if (sameDate.length > 1 && /^类目分析汇总/.test(brief.sourceFile)) {
-      brief.sourceLabel = `${brief.sourceLabel} · 类目`;
+  for (const report of reports) {
+    const sameDate = reports.filter((item) => item.date === report.date);
+    report.label = `${report.label}${sameDate.length > 1 && report.kind === "category" ? " · 类目" : ""}`;
+    if (sameDate.length > 1 && report.kind === "ranking") {
+      report.label = `${report.label} · 榜单`;
     }
   }
-  return briefs;
+  return reports;
 }
 
 async function copyFile(from, to) {
@@ -387,10 +548,9 @@ async function build() {
     CATEGORY_ORDER.flatMap((category) => ["bsr", "new"].flatMap((type) => sources.get(category)[type].map((file) => file.date)))
   )).sort((a, b) => b.localeCompare(a));
   if (!dates.length) throw new Error("榜单Data/Raw 没有可发布的 BSR/NEW 文件");
-  const periodDates = dates.slice(0, 2);
   const periods = [];
 
-  for (const date of periodDates) {
+  for (const date of dates) {
     const selected = sourceForPeriod(sources, date);
     const categories = {};
     for (const category of CATEGORY_ORDER) {
@@ -429,11 +589,11 @@ async function build() {
   }
 
   const latestDate = periods[0].date;
-  const briefs = await loadBriefs();
+  const reports = await loadReports();
   const productCount = Object.values(periods[0].categories)
     .flatMap((category) => Object.values(category))
     .reduce((sum, section) => sum + section.products.length, 0);
-  const data = {
+  const manifest = {
     meta: {
       title: "HN Ranking Analysis",
       subtitle: "Amazon US Swimwear 周度榜单分析",
@@ -444,32 +604,72 @@ async function build() {
       categories: CATEGORY_ORDER,
       typeLabels: TYPE_LABELS,
       productCount,
-      summaryReportCount: briefs.length,
+      periodCount: dates.length,
+      summaryReportCount: reports.length,
       availablePeriods: dates,
     },
-    periods,
-    briefs,
+    periods: periods.map((period) => ({ date: period.date, label: period.label })),
+    reports: reports.map((report) => ({
+      key: report.key,
+      date: report.date,
+      label: report.label,
+      kind: report.kind,
+      sourceFile: report.sourceFile,
+      sheetCount: report.sheets.length,
+    })),
   };
-  const payload = JSON.stringify(data);
-  const version = createHash("sha256").update(payload).digest("hex").slice(0, 12);
-  data.meta.version = version;
-  const finalPayload = JSON.stringify(data);
+  const versionHash = createHash("sha256");
+  versionHash.update(JSON.stringify(manifest));
+  periods.forEach((period) => versionHash.update(JSON.stringify(period)));
+  reports.forEach((report) => versionHash.update(JSON.stringify(report.sheets)));
+  const version = versionHash.digest("hex").slice(0, 12);
+  manifest.meta.version = version;
 
   await fs.rm(DOCS_DIR, { recursive: true, force: true });
-  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.mkdir(path.join(DATA_DIR, "periods"), { recursive: true });
+  await fs.mkdir(path.join(DATA_DIR, "reports"), { recursive: true });
   await copyFile(path.join(SOURCE_DIR, "index.html"), path.join(DOCS_DIR, "index.html"));
   await copyFile(path.join(SOURCE_DIR, "styles.css"), path.join(DOCS_DIR, "styles.css"));
+  await copyFile(path.join(SOURCE_DIR, "ui-common.js"), path.join(DOCS_DIR, "ui-common.js"));
   await copyFile(path.join(SOURCE_DIR, "app.js"), path.join(DOCS_DIR, "app.js"));
+  await copyFile(path.join(SOURCE_DIR, "report-viewer.js"), path.join(DOCS_DIR, "report-viewer.js"));
+  await copyFile(path.join(SOURCE_DIR, "compare-viewer.js"), path.join(DOCS_DIR, "compare-viewer.js"));
   await copyFile(
     path.join(WORKBENCH_DIR, "public", "vendor", "lucide.min.js"),
     path.join(DOCS_DIR, "vendor", "lucide.min.js")
   );
-  await fs.writeFile(path.join(DATA_DIR, "rankings.json"), finalPayload, "utf8");
+  await copyFile(
+    path.join(WORKBENCH_DIR, "public", "vendor", "echarts.min.js"),
+    path.join(DOCS_DIR, "vendor", "echarts.min.js")
+  );
+  await fs.writeFile(path.join(DATA_DIR, "index.json"), JSON.stringify(manifest), "utf8");
+  for (const period of periods) {
+    await fs.writeFile(
+      path.join(DATA_DIR, "periods", `${period.date}.json`),
+      JSON.stringify(period),
+      "utf8"
+    );
+  }
+  for (const report of reports) {
+    await fs.writeFile(
+      path.join(DATA_DIR, "reports", `${report.key}.json`),
+      JSON.stringify({
+        key: report.key,
+        date: report.date,
+        label: report.label,
+        kind: report.kind,
+        name: report.name,
+        sourceFile: report.sourceFile,
+        sheets: report.sheets,
+      }),
+      "utf8"
+    );
+  }
   await fs.writeFile(path.join(DOCS_DIR, ".nojekyll"), "", "utf8");
 
   console.log(`built ${DOCS_DIR}`);
   console.log(`periods: ${periods.map((period) => period.date).join(", ")}`);
-  console.log(`summary reports: ${briefs.length}`);
+  console.log(`summary reports: ${reports.length}`);
   console.log(`products: ${productCount}`);
   console.log(`version: ${version}`);
 }

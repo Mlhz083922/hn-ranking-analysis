@@ -3,48 +3,26 @@
 
   const PASSWORD_HASH = "c47ad772ab8141e427d2982db0fd7060cffad4806d218e87d3644fccaf07a461";
   const AUTH_KEY = "hnRankingReadonlyAuthTs";
+  const { esc, fmtNum, initIcons, toast, fetchJSON } = window.RankingUI;
   const state = {
-    data: null,
+    manifest: null,
     periodIndex: 0,
+    currentPeriod: null,
+    periodCache: new Map(),
+    periodPromise: null,
     reportIndex: 0,
+    reportCache: new Map(),
     category: "坦基尼套装",
     type: "bsr",
     mode: "grid",
     view: "rankings",
     query: "",
+    compareStarted: false,
   };
 
   const $ = (selector, root) => (root || document).querySelector(selector);
   const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
-  const esc = (value) => String(value == null ? "" : value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-  const num = (value, digits) => value == null || !Number.isFinite(Number(value))
-    ? "-"
-    : Number(value).toLocaleString("zh-CN", {
-      minimumFractionDigits: digits == null ? 0 : digits,
-      maximumFractionDigits: digits == null ? 0 : digits,
-    });
-  const money = (value) => value == null ? "-" : `$${num(value, Number(value) < 100 ? 1 : 0)}`;
-
-  function initIcons() {
-    if (window.lucide && typeof window.lucide.createIcons === "function") {
-      window.lucide.createIcons();
-    }
-  }
-
-  function toast(message, kind) {
-    const root = $("#toast-root");
-    if (!root) return;
-    const el = document.createElement("div");
-    el.className = `toast${kind ? ` ${kind}` : ""}`;
-    el.textContent = message;
-    root.appendChild(el);
-    setTimeout(() => el.remove(), 2400);
-  }
+  const money = (value) => value == null ? "-" : `$${fmtNum(value, Number(value) < 100 ? 1 : 0)}`;
 
   async function sha256(value) {
     const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
@@ -78,53 +56,57 @@
     });
   }
 
-  async function loadData() {
+  async function loadManifest() {
     const status = $("#load-status");
     status.hidden = false;
-    status.textContent = "正在加载榜单快照…";
+    status.textContent = "正在加载榜单索引…";
     try {
-      const response = await fetch("./data/rankings.json", { cache: "no-cache" });
-      if (!response.ok) throw new Error(`数据加载失败 ${response.status}`);
-      state.data = await response.json();
+      state.manifest = await fetchJSON("./data/index.json");
       state.periodIndex = 0;
-      state.category = state.data.meta.categories[0];
+      state.category = state.manifest.meta.categories[0];
     } finally {
       status.hidden = true;
     }
   }
 
-  function activePeriod() {
-    return state.data.periods[state.periodIndex];
+  async function loadPeriodByDate(date) {
+    if (state.periodCache.has(date)) return state.periodCache.get(date);
+    const data = await fetchJSON(`./data/periods/${encodeURIComponent(date)}.json`);
+    state.periodCache.set(date, data);
+    return data;
   }
 
-  function activeSection() {
-    return activePeriod().categories[state.category]?.[state.type] || null;
+  async function loadCurrentPeriod() {
+    const date = state.manifest.periods[state.periodIndex].date;
+    if (state.currentPeriod?.date === date) return state.currentPeriod;
+    if (state.periodPromise) return state.periodPromise;
+    state.periodPromise = loadPeriodByDate(date)
+      .then((period) => {
+        if (state.manifest.periods[state.periodIndex].date === date) state.currentPeriod = period;
+        return period;
+      })
+      .finally(() => { state.periodPromise = null; });
+    return state.periodPromise;
   }
 
-  function activeBrief() {
-    return state.data.briefs[state.reportIndex] || null;
+  function activeSection(period) {
+    return period?.categories?.[state.category]?.[state.type] || null;
   }
 
   function renderHeader() {
-    const meta = state.data.meta;
-    $("#period-pill").textContent = `最新期 ${meta.latestLabel}`;
-    $("#generated-at").textContent = `生成 ${new Date(meta.generatedAt).toLocaleString("zh-CN", {
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })}`;
+    const meta = state.manifest.meta;
+    $("#period-pill").textContent = `${meta.periodCount} 期 · 最新 ${meta.latestLabel}`;
+    $("#generated-at").textContent = `${meta.summaryReportCount} 份汇总报告`;
   }
 
   function renderControls() {
-    const meta = state.data.meta;
+    const meta = state.manifest.meta;
     $("#category-tabs").innerHTML = meta.categories.map((category) => `
       <button type="button" data-category="${esc(category)}" class="${category === state.category ? "is-active" : ""}">
         ${esc(category)}
       </button>
     `).join("");
-    $("#period-select").innerHTML = state.data.periods.map((period, index) => `
+    $("#period-select").innerHTML = state.manifest.periods.map((period, index) => `
       <option value="${index}" ${index === state.periodIndex ? "selected" : ""}>${esc(period.label)}</option>
     `).join("");
     $$("#type-tabs [data-type]").forEach((button) => button.classList.toggle("is-active", button.dataset.type === state.type));
@@ -135,11 +117,11 @@
     const stats = section.stats;
     const topBrands = stats.topBrands.slice(0, 3).map((item) => item.brand).join(" · ") || "-";
     const cards = [
-      { label: "榜单产品", value: num(stats.count), note: state.type === "bsr" ? "热卖榜 Top100" : "新品榜收录" },
+      { label: "榜单产品", value: fmtNum(stats.count), note: state.type === "bsr" ? "热卖榜 Top100" : "新品榜收录" },
       { label: "平均价格", value: money(stats.avgPrice), note: `中位价 ${money(stats.medianPrice)}` },
-      { label: "平均月销", value: num(stats.avgSales), note: `合计 ${num(stats.totalSales)}` },
-      { label: "平均评分", value: stats.avgRating == null ? "-" : stats.avgRating.toFixed(1), note: `零评论 ${num(stats.zeroReviews)} 款` },
-      { label: "主要品牌", value: topBrands, note: `近 60 天上架 ${num(stats.new60)} 款` },
+      { label: "平均月销", value: fmtNum(stats.avgSales), note: `合计 ${fmtNum(stats.totalSales)}` },
+      { label: "平均评分", value: stats.avgRating == null ? "-" : stats.avgRating.toFixed(1), note: `零评论 ${fmtNum(stats.zeroReviews)} 款` },
+      { label: "主要品牌", value: topBrands, note: `近 60 天上架 ${fmtNum(stats.new60)} 款` },
     ];
     $("#stats-grid").innerHTML = cards.map((card) => `
       <div class="stat-card">
@@ -191,20 +173,18 @@
                 <div class="product-title" title="${esc(product.title)}">${esc(product.title)}</div>
                 <div class="product-price">${money(product.price)}</div>
                 <div class="product-metrics">
-                  <span>月销 ${num(product.sales)}</span>
-                  <span>${product.rating == null ? "-" : product.rating.toFixed(1)}★ · ${num(product.reviews)}评</span>
+                  <span>月销 ${fmtNum(product.sales)}</span>
+                  <span>${product.rating == null ? "-" : product.rating.toFixed(1)}★ · ${fmtNum(product.reviews)}评</span>
                 </div>
                 <div class="product-tags">
                   <span class="tag accent">${esc(product.asin || "ASIN待补")}</span>
-                  ${product.days != null ? `<span class="tag">上架 ${num(product.days)} 天</span>` : ""}
+                  ${product.days != null ? `<span class="tag">上架 ${fmtNum(product.days)} 天</span>` : ""}
                   ${product.coupon ? `<span class="tag amber">${esc(product.coupon)}</span>` : ""}
                 </div>
               </div>
-            </a>
-          `;
+            </a>`;
         }).join("")}
-      </div>
-    `;
+      </div>`;
   }
 
   function renderProductTable(products) {
@@ -215,21 +195,9 @@
     $("#ranking-content").innerHTML = `
       <div class="table-wrap">
         <table class="data-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>ASIN</th>
-              <th>品牌</th>
-              <th>标题</th>
-              <th>价格</th>
-              <th>评分</th>
-              <th>评论</th>
-              <th>月销</th>
-              <th>小类 BSR</th>
-              <th>上架天数</th>
-              <th>榜位变化</th>
-            </tr>
-          </thead>
+          <thead><tr>
+            <th>#</th><th>ASIN</th><th>品牌</th><th>标题</th><th>价格</th><th>评分</th><th>评论</th><th>月销</th><th>小类 BSR</th><th>上架天数</th><th>榜位变化</th>
+          </tr></thead>
           <tbody>
             ${products.map((product) => `
               <tr>
@@ -239,149 +207,104 @@
                 <td class="title-cell" title="${esc(product.title)}">${esc(product.title)}</td>
                 <td class="num">${money(product.price)}</td>
                 <td class="num">${product.rating == null ? "-" : product.rating.toFixed(1)}</td>
-                <td class="num">${num(product.reviews)}</td>
-                <td class="num">${num(product.sales)}</td>
-                <td class="num">${num(product.bsrSmall)}</td>
-                <td class="num">${num(product.days)}</td>
+                <td class="num">${fmtNum(product.reviews)}</td>
+                <td class="num">${fmtNum(product.sales)}</td>
+                <td class="num">${fmtNum(product.bsrSmall)}</td>
+                <td class="num">${fmtNum(product.days)}</td>
                 <td class="num">${rankMove(product) || "-"}</td>
-              </tr>
-            `).join("")}
+              </tr>`).join("")}
           </tbody>
         </table>
-      </div>
-    `;
+      </div>`;
   }
 
-  function renderRankings() {
-    const period = activePeriod();
-    const section = activeSection();
-    const categoryLabel = state.category;
-    const typeLabel = state.data.meta.typeLabels[state.type];
-    $("#ranking-context").textContent = `${period.label} · 亚马逊美国站 · ${typeLabel}`;
-    $("#ranking-title").textContent = categoryLabel;
-    if (!section) {
-      $("#stats-grid").innerHTML = "";
-      $("#ranking-content").innerHTML = `<div class="empty-state"><p>该数据期暂无${esc(typeLabel)}数据</p></div>`;
-      return;
+  async function renderRankings() {
+    const periodIndex = state.periodIndex;
+    const category = state.category;
+    const type = state.type;
+    $("#ranking-context").textContent = "正在加载数据期…";
+    $("#ranking-title").textContent = category;
+    $("#stats-grid").innerHTML = "";
+    $("#ranking-content").innerHTML = `<div class="empty-state"><p>正在加载榜单…</p></div>`;
+    try {
+      const period = await loadCurrentPeriod();
+      if (periodIndex !== state.periodIndex || category !== state.category || type !== state.type) return;
+      const section = activeSection(period);
+      const typeLabel = state.manifest.meta.typeLabels[state.type];
+      $("#ranking-context").textContent = `${period.label} · 亚马逊美国站 · ${typeLabel}`;
+      $("#ranking-title").textContent = state.category;
+      if (!section) {
+        $("#ranking-content").innerHTML = `<div class="empty-state"><p>该数据期暂无${esc(typeLabel)}数据</p></div>`;
+        return;
+      }
+      renderStats(section);
+      const products = filterProducts(section.products);
+      if (state.mode === "table") renderProductTable(products);
+      else renderProductGrid(products);
+      initIcons();
+    } catch (error) {
+      $("#ranking-content").innerHTML = `<div class="empty-state"><p>榜单加载失败: ${esc(error.message || error)}</p></div>`;
     }
-    renderStats(section);
-    const products = filterProducts(section.products);
-    if (state.mode === "table") renderProductTable(products);
-    else renderProductGrid(products);
-    initIcons();
   }
 
-  function renderComparison(section) {
-    if (!section || !section.categories.length) return "";
-    return `
-      <div class="comparison-block">
-        <h4>${esc(section.title)}</h4>
-        <div class="table-wrap">
-          <table class="comparison-table">
-            <thead>
-              <tr>
-                <th>指标</th>
-                ${section.categories.map((category) => `<th>${esc(category)}</th>`).join("")}
-              </tr>
-            </thead>
-            <tbody>
-              ${section.rows.map((row) => `
-                <tr>
-                  <td>${esc(row.metric)}</td>
-                  ${row.values.map((value) => `<td>${esc(value || "-")}</td>`).join("")}
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderInsights() {
-    const briefs = state.data.briefs || [];
-    const brief = activeBrief();
-    $("#insights-title").textContent = `汇总报告 · ${briefs.length} 期`;
-    $("#summary-file").textContent = brief?.sourceFile || "暂无汇总报告";
-    $("#report-tabs").innerHTML = briefs.map((item, index) => `
+  function renderReportTabs() {
+    const reports = state.manifest.reports || [];
+    $("#report-tabs").innerHTML = reports.map((report, index) => `
       <button type="button" data-report-index="${index}" class="${index === state.reportIndex ? "is-active" : ""}">
-        ${esc(item.sourceLabel || item.period || item.sourceDate)}
+        ${esc(report.label)}
       </button>
     `).join("");
-    if (!brief) {
-      $("#insights-content").innerHTML = `<div class="empty-state"><p>该数据期暂无汇总分析报告</p></div>`;
-      return;
-    }
-    const details = brief.categoryDetails || [];
-    const findings = brief.findings || [];
-    const actions = brief.actions || [];
-    $("#insights-content").innerHTML = `
-      <div class="insight-panel">
-        <h3>四大子类目对比</h3>
-        <div class="comparison-grid">
-          ${renderComparison(brief.comparison.bsr)}
-          ${renderComparison(brief.comparison.new)}
-        </div>
-        ${brief.trend ? `<p class="trend-callout" style="margin-top:16px">${esc(brief.trend)}</p>` : ""}
-      </div>
-
-      <div class="insight-panel">
-        <h3>子类目详情</h3>
-        <div class="detail-grid">
-          ${details.map((detail) => `
-            <div class="detail-block">
-              <h4>${esc(detail.name)}</h4>
-              <table class="comparison-table">
-                <thead>
-                  <tr>
-                    <th>指标</th>
-                    ${(detail.metricHeaders || ["BSR", "NEW"]).map((header) => `<th>${esc(header)}</th>`).join("")}
-                  </tr>
-                </thead>
-                <tbody>
-                  ${detail.metrics.map((row) => `
-                    <tr>
-                      <td>${esc(row.metric)}</td>
-                      ${row.values.map((value) => `<td>${esc(value || "-")}</td>`).join("")}
-                    </tr>
-                  `).join("")}
-                </tbody>
-              </table>
-              ${detail.conclusion ? `<p class="detail-note">${esc(detail.conclusion)}</p>` : ""}
-            </div>
-          `).join("")}
-        </div>
-      </div>
-
-      <div class="insight-panel">
-        <h3>关键发现</h3>
-        <div class="finding-list">
-          ${findings.map((finding) => `
-            <div class="finding-group">
-              <h4>${esc(finding.name)}</h4>
-              <ul>${finding.points.map((point) => `<li>${esc(point)}</li>`).join("")}</ul>
-            </div>
-          `).join("")}
-        </div>
-      </div>
-
-      <div class="insight-panel">
-        <h3>行动建议</h3>
-        ${actions.map((action) => `
-          <div class="action-block">
-            <h4>${esc(action.title)}</h4>
-            <ol>${action.paragraphs.map((paragraph) => `<li>${esc(paragraph)}</li>`).join("")}</ol>
-          </div>
-        `).join("")}
-      </div>
-    `;
+    $("#insights-title").textContent = `汇总报告 · ${reports.length} 份`;
   }
 
-  function render() {
-    renderHeader();
-    renderControls();
-    renderRankings();
-    renderInsights();
+  async function showReport(index) {
+    const reports = state.manifest.reports || [];
+    const reportMeta = reports[index];
+    if (!reportMeta) return;
+    state.reportIndex = index;
+    $$("#report-tabs [data-report-index]").forEach((button) => {
+      button.classList.toggle("is-active", Number(button.dataset.reportIndex) === index);
+    });
+    $("#summary-file").textContent = reportMeta.sourceFile;
+    $("#insights-content").innerHTML = `<div class="empty-state"><p>正在加载 ${esc(reportMeta.sourceFile)}…</p></div>`;
+    try {
+      let report = state.reportCache.get(reportMeta.key);
+      if (!report) {
+        report = await fetchJSON(`./data/reports/${encodeURIComponent(reportMeta.key)}.json`);
+        state.reportCache.set(reportMeta.key, report);
+      }
+      if (state.reportIndex !== index) return;
+      window.RankingReportViewer.render($("#insights-content"), report);
+    } catch (error) {
+      $("#insights-content").innerHTML = `<div class="empty-state"><p>报告加载失败: ${esc(error.message || error)}</p></div>`;
+    }
+  }
+
+  function renderReports() {
+    renderReportTabs();
+    showReport(state.reportIndex);
+  }
+
+  function renderCompare() {
+    $("#compare-period-count").textContent = `${state.manifest.meta.periodCount} 个榜单数据期`;
+    if (state.compareStarted) return;
+    state.compareStarted = true;
+    window.RankingCompare.render($("#compare-content"), {
+      manifest: state.manifest,
+      loadPeriod: loadPeriodByDate,
+    });
+  }
+
+  function switchView(view) {
+    state.view = view;
+    $$(".view-tab").forEach((button) => button.classList.toggle("is-active", button.dataset.view === view));
+    $("#rankings-view").classList.toggle("view-hidden", view !== "rankings");
+    $("#insights-view").classList.toggle("view-hidden", view !== "insights");
+    $("#compare-view").classList.toggle("view-hidden", view !== "compare");
+    if (view === "rankings") renderRankings();
+    else if (view === "insights") renderReports();
+    else if (view === "compare") renderCompare();
+    initIcons();
   }
 
   function bindEvents() {
@@ -391,42 +314,40 @@
       state.category = button.dataset.category;
       state.query = "";
       $("#product-search").value = "";
-      render();
+      renderControls();
+      renderRankings();
     });
     $("#type-tabs").addEventListener("click", (event) => {
       const button = event.target.closest("[data-type]");
       if (!button) return;
       state.type = button.dataset.type;
-      render();
+      renderControls();
+      renderRankings();
     });
     $("#mode-tabs").addEventListener("click", (event) => {
       const button = event.target.closest("[data-mode]");
       if (!button) return;
       state.mode = button.dataset.mode;
-      render();
+      renderControls();
+      renderRankings();
     });
     $("#period-select").addEventListener("change", (event) => {
       state.periodIndex = Number(event.target.value || 0);
-      render();
+      state.currentPeriod = null;
+      renderControls();
+      renderRankings();
     });
     $("#product-search").addEventListener("input", (event) => {
       state.query = event.target.value;
-      renderRankings();
+      if (state.currentPeriod) renderRankings();
     });
     $("#report-tabs").addEventListener("click", (event) => {
       const button = event.target.closest("[data-report-index]");
       if (!button) return;
-      state.reportIndex = Number(button.dataset.reportIndex || 0);
-      renderInsights();
+      showReport(Number(button.dataset.reportIndex || 0));
     });
     $$(".view-tab").forEach((button) => {
-      button.addEventListener("click", () => {
-        state.view = button.dataset.view;
-        $$(".view-tab").forEach((tab) => tab.classList.toggle("is-active", tab === button));
-        $("#rankings-view").classList.toggle("view-hidden", state.view !== "rankings");
-        $("#insights-view").classList.toggle("view-hidden", state.view !== "insights");
-        initIcons();
-      });
+      button.addEventListener("click", () => switchView(button.dataset.view));
     });
     $("#lock-site").addEventListener("click", () => {
       try { localStorage.removeItem(AUTH_KEY); } catch (error) { /* ignore */ }
@@ -438,9 +359,11 @@
     try {
       await requireAuth();
       $("#app").hidden = false;
-      await loadData();
+      await loadManifest();
+      renderHeader();
+      renderControls();
       bindEvents();
-      render();
+      switchView("rankings");
       initIcons();
     } catch (error) {
       const status = $("#load-status");

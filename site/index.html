@@ -50,6 +50,10 @@
         <i data-lucide="files"></i>
         <span>汇总报告</span>
       </button>
+      <button class="view-tab" type="button" data-view="compare">
+        <i data-lucide="git-compare"></i>
+        <span>跨期对比</span>
+      </button>
     </nav>
 
     <main>
@@ -106,6 +110,17 @@
         <div class="report-tabs" id="report-tabs" aria-label="汇总报告数据期"></div>
         <div id="insights-content"></div>
       </section>
+
+      <section id="compare-view" class="view-hidden">
+        <div class="section-heading insights-heading">
+          <div>
+            <p class="eyebrow">任意期指标 · ASIN 异动 · 多期趋势</p>
+            <h2>跨期对比</h2>
+          </div>
+          <span class="file-chip" id="compare-period-count"></span>
+        </div>
+        <div id="compare-content"></div>
+      </section>
     </main>
 
     <div id="load-status" class="load-status" hidden></div>
@@ -113,6 +128,10 @@
   </div>
 
   <script src="vendor/lucide.min.js"></script>
+  <script src="vendor/echarts.min.js"></script>
+  <script src="ui-common.js"></script>
+  <script src="report-viewer.js"></script>
+  <script src="compare-viewer.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

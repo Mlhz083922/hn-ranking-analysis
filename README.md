@@ -1,11 +1,15 @@
 # HN Ranking Analysis
 
-Amazon US 泳装类目周度榜单只读站，供运营团队查看最新 BSR / New Releases Top100、跨期榜位变化和本期分析结论。
+Amazon US 泳装类目周度榜单只读站。除工作台“分析工具”外，保留全部三个只读模块：
+
+- 子类目榜单：全部 13 个榜单期，四类目 BSR / NEW 图片模式和表格模式
+- 汇总报告：全部 14 份完整工作簿（汇总表 + 4 个子类目明细表）
+- 跨期对比：任意两期指标对比、ASIN 异动、全部期次趋势
 
 ## 数据来源
 
 - 原始榜单：`AMZ- auto/榜单Data/Raw`
-- 本期汇总：`AMZ- auto/榜单Data/Output/榜单分析汇总_YYYYMMDD.xlsx`
+- 全部汇总：`AMZ- auto/榜单Data/Output/榜单分析汇总_YYYYMMDD.xlsx`
 
 ## 本地构建
 
