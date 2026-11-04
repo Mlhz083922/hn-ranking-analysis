@@ -523,7 +523,9 @@ function addImagesToReportSheets(sheets, imageByAsin) {
 async function loadReports(imageByAsin) {
   const entries = await fs.readdir(OUTPUT_DIR, { withFileTypes: true }).catch(() => []);
   const candidates = entries
-    .filter((entry) => entry.isFile() && /分析汇总_\d{8}\.xlsx$/i.test(entry.name))
+    .filter((entry) => entry.isFile()
+      && /分析汇总_\d{8}\.xlsx$/i.test(entry.name)
+      && !/^类目分析汇总_20260818\.xlsx$/i.test(entry.name))
     .map((entry) => ({ name: entry.name, date: dateFromName(entry.name) }))
     .sort((a, b) => b.date.localeCompare(a.date));
   const reports = [];
@@ -680,6 +682,15 @@ async function build() {
     path.join(WORKBENCH_DIR, "public", "vendor", "echarts.min.js"),
     path.join(DOCS_DIR, "vendor", "echarts.min.js")
   );
+  const builtIndexPath = path.join(DOCS_DIR, "index.html");
+  const builtIndex = await fs.readFile(builtIndexPath, "utf8");
+  const cacheBustedIndex = builtIndex
+    .replace('href="styles.css"', `href="styles.css?v=${version}"`)
+    .replace('src="ui-common.js"', `src="ui-common.js?v=${version}"`)
+    .replace('src="report-viewer.js"', `src="report-viewer.js?v=${version}"`)
+    .replace('src="compare-viewer.js"', `src="compare-viewer.js?v=${version}"`)
+    .replace('src="app.js"', `src="app.js?v=${version}"`);
+  await fs.writeFile(builtIndexPath, cacheBustedIndex, "utf8");
   await fs.writeFile(path.join(DATA_DIR, "index.json"), JSON.stringify(manifest), "utf8");
   for (const period of periods) {
     await fs.writeFile(
