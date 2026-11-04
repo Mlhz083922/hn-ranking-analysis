@@ -501,7 +501,26 @@ function parseSummaryBrief(rows) {
   };
 }
 
-async function loadReports() {
+function addImagesToReportSheets(sheets, imageByAsin) {
+  for (const sheet of sheets) {
+    const headerIndex = sheet.rows.findIndex((row) => row.some((cell) => cleanCell(cell) === "主图")
+      && row.some((cell) => /^ASIN$/i.test(cleanCell(cell))));
+    if (headerIndex < 0) continue;
+    const headers = sheet.rows[headerIndex].map(cleanCell);
+    const imageIndex = headers.indexOf("主图");
+    const asinIndex = headers.findIndex((header) => /^ASIN$/i.test(header));
+    if (imageIndex < 0 || asinIndex < 0) continue;
+    for (const row of sheet.rows.slice(headerIndex + 1)) {
+      const asin = cleanCell(row[asinIndex]).toUpperCase();
+      if (!asin) break;
+      if (!cleanCell(row[imageIndex]) && imageByAsin.has(asin)) {
+        row[imageIndex] = imageByAsin.get(asin);
+      }
+    }
+  }
+}
+
+async function loadReports(imageByAsin) {
   const entries = await fs.readdir(OUTPUT_DIR, { withFileTypes: true }).catch(() => []);
   const candidates = entries
     .filter((entry) => entry.isFile() && /分析汇总_\d{8}\.xlsx$/i.test(entry.name))
@@ -513,6 +532,7 @@ async function loadReports() {
       const sheets = await parseWorkbookSheets(path.join(OUTPUT_DIR, source.name));
       if (!sheets.length) throw new Error("工作簿没有可读取的工作表");
       const kind = /^类目分析汇总/.test(source.name) ? "category" : "ranking";
+      addImagesToReportSheets(sheets, imageByAsin);
       reports.push({
         key: `report_${source.date}_${kind}`,
         date: source.date,
@@ -589,7 +609,17 @@ async function build() {
   }
 
   const latestDate = periods[0].date;
-  const reports = await loadReports();
+  const imageByAsin = new Map();
+  for (const period of periods) {
+    for (const category of Object.values(period.categories)) {
+      for (const section of Object.values(category)) {
+        for (const product of section.products) {
+          if (product.asin && product.image) imageByAsin.set(product.asin.toUpperCase(), product.image);
+        }
+      }
+    }
+  }
+  const reports = await loadReports(imageByAsin);
   const productCount = Object.values(periods[0].categories)
     .flatMap((category) => Object.values(category))
     .reduce((sum, section) => sum + section.products.length, 0);
