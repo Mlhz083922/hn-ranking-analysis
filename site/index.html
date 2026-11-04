@@ -42,11 +42,11 @@
     </header>
 
     <nav class="view-tabs" aria-label="榜单视图">
-      <button class="view-tab is-active" type="button" data-view="rankings">
+      <button class="view-tab" type="button" data-view="rankings">
         <i data-lucide="bar-chart-3"></i>
         <span>榜单数据</span>
       </button>
-      <button class="view-tab" type="button" data-view="insights">
+      <button class="view-tab is-active" type="button" data-view="insights">
         <i data-lucide="files"></i>
         <span>汇总报告</span>
       </button>
@@ -57,57 +57,53 @@
     </nav>
 
     <main>
-      <section id="rankings-view">
-        <div class="control-bar">
-          <div class="segmented" id="category-tabs" aria-label="子类目"></div>
-          <div class="control-actions">
-            <div class="segmented compact" id="type-tabs" aria-label="榜单类型">
+      <section id="rankings-view" class="view-hidden">
+        <div class="card ranking-controls">
+          <div class="ranking-control-row">
+            <div class="seg-tabs" id="category-tabs" aria-label="子类目"></div>
+            <div class="seg-tabs" id="type-tabs" aria-label="榜单类型">
               <button type="button" data-type="bsr" class="is-active">
-                <i data-lucide="flame"></i>BSR
+                <i data-lucide="flame"></i>热卖榜 BSR
               </button>
               <button type="button" data-type="new">
-                <i data-lucide="sparkles"></i>NEW
+                <i data-lucide="sparkles"></i>新品榜 NEW
               </button>
             </div>
-            <label class="select-control">
+            <div class="period-control">
               <span>数据期</span>
               <select id="period-select"></select>
-            </label>
-            <div class="segmented compact" id="mode-tabs" aria-label="展示方式">
-              <button type="button" data-mode="grid" class="is-active" title="图片模式" aria-label="图片模式">
-                <i data-lucide="layout-grid"></i>
-              </button>
-              <button type="button" data-mode="table" title="表格模式" aria-label="表格模式">
-                <i data-lucide="table-2"></i>
-              </button>
             </div>
           </div>
         </div>
 
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow" id="ranking-context">-</p>
+        <div class="card">
+          <div class="ranking-card-head">
             <h2 id="ranking-title">榜单加载中</h2>
+            <div class="seg-tabs" id="mode-tabs" aria-label="展示方式">
+              <button type="button" data-mode="grid" class="is-active" data-lucide-icon="image">
+                <i data-lucide="image"></i>图片模式
+              </button>
+              <button type="button" data-mode="table" data-lucide-icon="table-2">
+                <i data-lucide="table-2"></i>表格模式
+              </button>
+            </div>
           </div>
-          <label class="search-control">
-            <i data-lucide="search"></i>
-            <input id="product-search" type="search" placeholder="搜索 ASIN、品牌或标题">
-          </label>
+          <div id="ranking-content" class="ranking-content"></div>
         </div>
-
-        <div id="stats-grid" class="stats-grid"></div>
-        <div id="ranking-content" class="ranking-content"></div>
       </section>
 
-      <section id="insights-view" class="view-hidden">
-        <div class="section-heading insights-heading">
-          <div>
-            <p class="eyebrow">全部周度汇总</p>
-            <h2 id="insights-title">汇总报告</h2>
+      <section id="insights-view">
+        <div class="card">
+          <h2><i data-lucide="history"></i>汇总报告（<span id="report-count">0</span>）</h2>
+          <p class="hint">展示 榜单Data/Output 中的全部周度汇总报告，点击查看完整内容</p>
+          <div class="report-filter">
+            <span>数据期</span>
+            <select id="report-period-filter">
+              <option value="">全部</option>
+            </select>
           </div>
-          <span class="file-chip" id="summary-file"></span>
+          <div id="report-list"></div>
         </div>
-        <div class="report-tabs" id="report-tabs" aria-label="汇总报告数据期"></div>
         <div id="insights-content"></div>
       </section>
 

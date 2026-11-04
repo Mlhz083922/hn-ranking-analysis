@@ -269,7 +269,7 @@
         <div class="report-sheet-head">
           <div>
             <p class="eyebrow">${esc(report.label || "")}</p>
-            <h3><i data-lucide="file-spreadsheet"></i>${esc(report.name || report.sourceFile || "")}</h3>
+            <h2><i data-lucide="file-spreadsheet"></i>${esc(report.name || report.sourceFile || "")}</h2>
           </div>
           <span class="tag accent">${report.sheets.length} 个工作表</span>
         </div>
@@ -286,7 +286,7 @@
         html += `
           <article class="report-sheet">
             <div class="report-sheet-head">
-              <h3><i data-lucide="layers"></i>${esc(sheet.name)}</h3>
+              <h2><i data-lucide="layers"></i>${esc(sheet.name)}</h2>
               <span class="tag">${sheet.rows.length} 行</span>
             </div>
             ${renderDetailSheet(sheet)}

@@ -529,7 +529,11 @@ async function loadReports(imageByAsin) {
   const reports = [];
   for (const source of candidates) {
     try {
-      const sheets = await parseWorkbookSheets(path.join(OUTPUT_DIR, source.name));
+      const sourcePath = path.join(OUTPUT_DIR, source.name);
+      const [sheets, fileStat] = await Promise.all([
+        parseWorkbookSheets(sourcePath),
+        fs.stat(sourcePath),
+      ]);
       if (!sheets.length) throw new Error("工作簿没有可读取的工作表");
       const kind = /^类目分析汇总/.test(source.name) ? "category" : "ranking";
       addImagesToReportSheets(sheets, imageByAsin);
@@ -542,6 +546,8 @@ async function loadReports(imageByAsin) {
         sheets,
         sourceFile: source.name,
         name: source.name,
+        size: fileStat.size,
+        mtime: fileStat.mtimeMs,
       });
     } catch (error) {
       console.warn(`summary skipped: ${source.name}: ${error.message}`);
@@ -646,6 +652,8 @@ async function build() {
       kind: report.kind,
       sourceFile: report.sourceFile,
       sheetCount: report.sheets.length,
+      size: report.size,
+      mtime: report.mtime,
     })),
   };
   const versionHash = createHash("sha256");

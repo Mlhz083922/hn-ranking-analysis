@@ -11,8 +11,7 @@
   const fmtNum = (value, digits) => value == null || !Number.isFinite(Number(value))
     ? "-"
     : Number(value).toLocaleString("zh-CN", {
-      minimumFractionDigits: digits == null ? 0 : digits,
-      maximumFractionDigits: digits == null ? 0 : digits,
+      maximumFractionDigits: digits == null ? 2 : digits,
     });
 
   function initIcons() {

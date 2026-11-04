@@ -15,6 +15,8 @@
   let cacheVersion = "";
   let trendChart = null;
   let trendResizeBound = false;
+  let collapseSequence = 0;
+  let batchHidden = true;
   let currentOptions = { metric: "avgPrice", trendRange: "8" };
 
   function metricText(value, kind) {
@@ -128,6 +130,7 @@
 
   function moveTable(title, products) {
     if (!products.length) return `<div class="hint" style="margin:6px 0">${esc(title)}：0 个</div>`;
+    const toggleId = `cp-${++collapseSequence}`;
     const headers = ["主图", "ASIN", "现排名", "前排名", "变化", "品牌", "标题", "价格", "评分", "评论"];
     const rows = products.map((product) => [
       product.image || "",
@@ -142,10 +145,68 @@
       product.reviews == null ? "" : product.reviews,
     ]);
     return `
-      <details class="move-section" open>
-        <summary>${esc(title)}（${products.length}）</summary>
-        ${tableHtml(headers, rows)}
-      </details>`;
+      <div style="margin:8px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0">
+          <div style="font-weight:700">${esc(title)}（${products.length}）</div>
+          <button class="btn btn-sm" type="button" data-collapse-toggle="${toggleId}" aria-expanded="true">
+            <i data-lucide="eye-off"></i><span>隐藏</span>
+          </button>
+        </div>
+        <div data-collapse-target="${toggleId}">${tableHtml(headers, rows)}</div>
+      </div>`;
+  }
+
+  function bindCollapse(container) {
+    container.querySelectorAll("[data-collapse-toggle]").forEach((button) => {
+      if (button.dataset.bound) return;
+      button.dataset.bound = "1";
+      button.addEventListener("click", () => {
+        const target = container.querySelector(`[data-collapse-target="${button.dataset.collapseToggle}"]`);
+        if (!target) return;
+        const hidden = target.style.display === "none";
+        target.style.display = hidden ? "" : "none";
+        button.setAttribute("aria-expanded", String(!hidden));
+        button.innerHTML = hidden
+          ? `<i data-lucide="eye-off"></i><span>隐藏</span>`
+          : `<i data-lucide="eye"></i><span>显示</span>`;
+        syncBatchButton(container);
+        initIcons();
+      });
+    });
+  }
+
+  function setAllCollapsed(container, hide) {
+    batchHidden = hide;
+    container.querySelectorAll('[data-collapse-target^="cp-"]').forEach((element) => {
+      element.style.display = hide ? "none" : "";
+    });
+    container.querySelectorAll("[data-collapse-toggle]").forEach((button) => {
+      const target = container.querySelector(`[data-collapse-target="${button.dataset.collapseToggle}"]`);
+      const collapsed = target ? target.style.display === "none" : false;
+      button.setAttribute("aria-expanded", String(!collapsed));
+      button.innerHTML = collapsed
+        ? `<i data-lucide="eye"></i><span>显示</span>`
+        : `<i data-lucide="eye-off"></i><span>隐藏</span>`;
+    });
+    const allButton = container.querySelector("#compare-toggle-tables");
+    if (allButton) {
+      allButton.innerHTML = hide
+        ? `<i data-lucide="eye"></i>批量显示产品表`
+        : `<i data-lucide="eye-off"></i>批量隐藏产品表`;
+    }
+    initIcons();
+  }
+
+  function syncBatchButton(container) {
+    const targets = Array.from(container.querySelectorAll('[data-collapse-target^="cp-"]'));
+    batchHidden = targets.length > 0 && targets.every((element) => element.style.display === "none");
+    const allButton = container.querySelector("#compare-toggle-tables");
+    if (allButton) {
+      allButton.innerHTML = batchHidden
+        ? `<i data-lucide="eye"></i>批量显示产品表`
+        : `<i data-lucide="eye-off"></i>批量隐藏产品表`;
+    }
+    initIcons();
   }
 
   function tableHtml(headers, rows) {
@@ -342,23 +403,26 @@
   function renderTrendControls(container, cache, options) {
     const periods = trendPeriods(cache, options.trendRange);
     container.innerHTML = `
-      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:8px">
-        <label class="inline-select">趋势指标
-          <select id="compare-trend-metric">
-            ${TREND_DEFS.map((definition) => `<option value="${definition[0]}" ${definition[0] === options.metric ? "selected" : ""}>${esc(definition[1])}</option>`).join("")}
-          </select>
-        </label>
-        <label class="inline-select">周期范围
-          <select id="compare-trend-range">
-            <option value="4" ${options.trendRange === "4" ? "selected" : ""}>近4期</option>
-            <option value="8" ${options.trendRange === "8" ? "selected" : ""}>近8期</option>
-            <option value="12" ${options.trendRange === "12" ? "selected" : ""}>近12期</option>
-            <option value="all" ${options.trendRange === "all" ? "selected" : ""}>全部</option>
-          </select>
-        </label>
-        <span class="tag">${periods.length} 期</span>
+      <div style="border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--panel-2);margin-bottom:10px">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:8px">
+          <label style="font-size:13px">趋势指标
+            <select id="compare-trend-metric" style="margin-left:6px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)">
+              ${TREND_DEFS.map((definition) => `<option value="${definition[0]}" ${definition[0] === options.metric ? "selected" : ""}>${esc(definition[1])}</option>`).join("")}
+            </select>
+          </label>
+          <label style="font-size:13px">周期范围
+            <select id="compare-trend-range" style="margin-left:6px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)">
+              <option value="4" ${options.trendRange === "4" ? "selected" : ""}>近4期</option>
+              <option value="8" ${options.trendRange === "8" ? "selected" : ""}>近8期</option>
+              <option value="12" ${options.trendRange === "12" ? "selected" : ""}>近12期</option>
+              <option value="all" ${options.trendRange === "all" ? "selected" : ""}>全部</option>
+            </select>
+          </label>
+          <span class="tag">${periods.length} 期</span>
+        </div>
+        <div id="compare-trend-chart" style="height:360px;width:100%"></div>
       </div>
-      <div id="compare-trend-chart" style="height:360px;width:100%"></div>`;
+    `;
     const metricSelect = container.querySelector("#compare-trend-metric");
     const rangeSelect = container.querySelector("#compare-trend-range");
     metricSelect.addEventListener("change", () => {
@@ -387,31 +451,30 @@
       ? `<div class="compare-warning">${cache.warnings.map((warning) => `<div>${esc(warning)}</div>`).join("")}</div>`
       : "";
     let html = warnings;
-    html += `<h3 class="compare-heading">双期指标对比 <span class="hint">${esc(options.base)} → ${esc(options.current)}</span></h3>`;
+    html += `<h3 style="margin:14px 0 8px">双期指标对比 <span class="hint">${esc(options.base)} → ${esc(options.current)}</span></h3>`;
     html += compareTable(cache, options);
-    html += `<h3 class="compare-heading">榜单异动</h3>`;
-    html += `<p class="hint">判定口径：排名变化 ≥10 位且 ≥20%。</p>`;
+    html += `<h3 style="margin:18px 0 8px">榜单异动</h3>`;
+    html += `<p class="hint">本页判定口径：排名变化 ≥10 位且 ≥20%。注意「导出汇总 / 分析工具」用的是 &gt;20 位，两处口径不同，不要混用。</p>`;
     categories.forEach((category) => types.forEach((type) => {
       const base = cache.byKey[`${options.base}|${category}|${type}`];
       const current = cache.byKey[`${options.current}|${category}|${type}`];
       if (!base || !current) return;
       const moves = rankMoves(cache, options.base, options.current, category, type);
       html += `
-        <section class="move-group">
-          <div class="move-group-head">
-            <h4>${esc(category)} · ${type === "NEW" ? "新品榜" : "热卖榜"}</h4>
-            <span class="tag">${esc(options.base)} → ${esc(options.current)}</span>
-          </div>
+        <div style="border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--panel-2);margin-bottom:10px">
+          <div style="font-weight:700">${esc(category)} · ${type === "NEW" ? "新品榜" : "热卖榜"} <span class="tag">${esc(options.base)} → ${esc(options.current)}</span></div>
           ${moveTable("新进 Top100", moves.newIn)}
           ${moveTable("跌出 Top100", moves.dropped)}
           ${moveTable("排名上升", moves.rises)}
           ${moveTable("排名下降", moves.drops)}
-        </section>`;
+        </div>`;
     }));
-    html += `<h3 class="compare-heading">多期趋势</h3><section id="compare-trend-section"></section>`;
+    html += `<h3 style="margin:18px 0 8px">多期趋势</h3><section id="compare-trend-section"></section>`;
     container.querySelector("#compare-result").innerHTML = html;
     renderTrendControls(container.querySelector("#compare-trend-section"), cache, currentOptions);
     mountTrendChart(container, cache, currentOptions);
+    bindCollapse(container);
+    setAllCollapsed(container, batchHidden);
     initIcons();
   }
 
@@ -429,24 +492,32 @@
       const latest = cache.periods[0];
       const previous = cache.periods[1] || latest;
       container.innerHTML = `
-        <div class="compare-controls">
-          <label class="inline-select">基线期 <select id="compare-base">${periodOptions(manifest.periods, previous)}</select></label>
-          <label class="inline-select">当期 <select id="compare-current">${periodOptions(manifest.periods, latest)}</select></label>
-          <label class="inline-select">类目
-            <select id="compare-category">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);margin-bottom:12px">
+          <label style="font-size:13px">基线期
+            <select id="compare-base" style="margin-left:6px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)">
+              ${periodOptions(manifest.periods, previous)}
+            </select>
+          </label>
+          <label style="font-size:13px">当期
+            <select id="compare-current" style="margin-left:6px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)">
+              ${periodOptions(manifest.periods, latest)}
+            </select>
+          </label>
+          <label style="font-size:13px">类目
+            <select id="compare-category" style="margin-left:6px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)">
               <option value="全部">全部</option>
               ${cache.cats.map((category) => `<option value="${esc(category)}">${esc(category)}</option>`).join("")}
             </select>
           </label>
-          <label class="inline-select">榜单
-            <select id="compare-type">
+          <label style="font-size:13px">榜单
+            <select id="compare-type" style="margin-left:6px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)">
               <option value="全部">全部</option>
               <option value="BSR">热卖榜 BSR</option>
               <option value="NEW">新品榜 NEW</option>
             </select>
           </label>
-          <button class="btn" type="button" id="compare-refresh"><i data-lucide="refresh-cw"></i>重新加载</button>
-          <button class="btn" type="button" id="compare-toggle-tables"><i data-lucide="eye-off"></i>批量隐藏产品表</button>
+          <button class="btn btn-sm" type="button" id="compare-refresh"><i data-lucide="refresh-cw"></i>重新加载数据</button>
+          <button class="btn btn-sm" type="button" id="compare-toggle-tables"><i data-lucide="eye-off"></i>批量隐藏产品表</button>
         </div>
         <div id="compare-result"></div>`;
       const apply = () => renderResult(container, cache, {
@@ -465,13 +536,8 @@
         render(container, context);
       });
       container.querySelector("#compare-toggle-tables").addEventListener("click", (event) => {
-        const details = Array.from(container.querySelectorAll(".move-section"));
-        const hide = details.some((detail) => detail.open);
-        details.forEach((detail) => { detail.open = !hide; });
-        event.currentTarget.innerHTML = hide
-          ? `<i data-lucide="eye"></i>批量显示产品表`
-          : `<i data-lucide="eye-off"></i>批量隐藏产品表`;
-        initIcons();
+        const targets = Array.from(container.querySelectorAll('[data-collapse-target^="cp-"]'));
+        setAllCollapsed(container, targets.some((element) => element.style.display !== "none"));
       });
       apply();
       initIcons();
