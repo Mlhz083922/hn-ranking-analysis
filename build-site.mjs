@@ -440,7 +440,7 @@ async function build() {
       latestDate,
       latestLabel: dateLabel(latestDate),
       previousDate: periods[1]?.date || "",
-      generatedAt: new Date().toISOString(),
+      generatedAt: `${latestDate.slice(0, 4)}-${latestDate.slice(4, 6)}-${latestDate.slice(6, 8)}T00:00:00.000Z`,
       categories: CATEGORY_ORDER,
       typeLabels: TYPE_LABELS,
       productCount,
