@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>HN Ranking Analysis · 泳装榜单分析</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="auth-gate" class="auth-gate">
+    <form id="auth-form" class="auth-box">
+      <div class="auth-mark">榜</div>
+      <h1>HN Ranking Analysis</h1>
+      <p>请输入团队访问密码</p>
+      <label class="sr-only" for="auth-pass">团队访问密码</label>
+      <input id="auth-pass" type="password" placeholder="访问密码" autocomplete="current-password">
+      <button class="btn btn-primary" type="submit">
+        <i data-lucide="arrow-right"></i>
+        <span>进入榜单库</span>
+      </button>
+      <p id="auth-error" class="auth-error" hidden>密码错误，请重试</p>
+    </form>
+  </div>
+
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">榜</div>
+        <div class="brand-copy">
+          <h1>HN Ranking Analysis</h1>
+          <p>Amazon US Swimwear · 周度榜单只读快照</p>
+        </div>
+      </div>
+      <div class="topbar-meta">
+        <span class="status-pill" id="period-pill">加载中</span>
+        <span class="status-pill muted" id="generated-at">-</span>
+        <button class="icon-btn" id="lock-site" type="button" title="锁定站点" aria-label="锁定站点">
+          <i data-lucide="lock-keyhole"></i>
+        </button>
+      </div>
+    </header>
+
+    <nav class="view-tabs" aria-label="榜单视图">
+      <button class="view-tab is-active" type="button" data-view="rankings">
+        <i data-lucide="bar-chart-3"></i>
+        <span>榜单数据</span>
+      </button>
+      <button class="view-tab" type="button" data-view="insights">
+        <i data-lucide="files"></i>
+        <span>汇总报告</span>
+      </button>
+    </nav>
+
+    <main>
+      <section id="rankings-view">
+        <div class="control-bar">
+          <div class="segmented" id="category-tabs" aria-label="子类目"></div>
+          <div class="control-actions">
+            <div class="segmented compact" id="type-tabs" aria-label="榜单类型">
+              <button type="button" data-type="bsr" class="is-active">
+                <i data-lucide="flame"></i>BSR
+              </button>
+              <button type="button" data-type="new">
+                <i data-lucide="sparkles"></i>NEW
+              </button>
+            </div>
+            <label class="select-control">
+              <span>数据期</span>
+              <select id="period-select"></select>
+            </label>
+            <div class="segmented compact" id="mode-tabs" aria-label="展示方式">
+              <button type="button" data-mode="grid" class="is-active" title="图片模式" aria-label="图片模式">
+                <i data-lucide="layout-grid"></i>
+              </button>
+              <button type="button" data-mode="table" title="表格模式" aria-label="表格模式">
+                <i data-lucide="table-2"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow" id="ranking-context">-</p>
+            <h2 id="ranking-title">榜单加载中</h2>
+          </div>
+          <label class="search-control">
+            <i data-lucide="search"></i>
+            <input id="product-search" type="search" placeholder="搜索 ASIN、品牌或标题">
+          </label>
+        </div>
+
+        <div id="stats-grid" class="stats-grid"></div>
+        <div id="ranking-content" class="ranking-content"></div>
+      </section>
+
+      <section id="insights-view" class="view-hidden">
+        <div class="section-heading insights-heading">
+          <div>
+            <p class="eyebrow">全部周度汇总</p>
+            <h2 id="insights-title">汇总报告</h2>
+          </div>
+          <span class="file-chip" id="summary-file"></span>
+        </div>
+        <div class="report-tabs" id="report-tabs" aria-label="汇总报告数据期"></div>
+        <div id="insights-content"></div>
+      </section>
+    </main>
+
+    <div id="load-status" class="load-status" hidden></div>
+    <div id="toast-root"></div>
+  </div>
+
+  <script src="vendor/lucide.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
